@@ -16,7 +16,7 @@ const EMAILJS = {
 //  PERSONNALISATION — modifiez ces valeurs selon votre fête !
 // ============================================================
 const CONFIG = {
-  childName: "Lukas",      // ⚠️ Remplacez par le prénom de votre fils !
+  childName: "Votre fils",      // ⚠️ Remplacez par le prénom de votre fils !
   age: 5,
   date: "Mercredi 18 juin 2026",
   time: "13h30 – 16h30",        // Horaire à adapter
@@ -755,7 +755,7 @@ function RSVPSection() {
       await emailjs.send(
         EMAILJS.serviceId,
         EMAILJS.templateId,
-        templateParams,
+        { ...templateParams, to_email: CONFIG.hostEmail },
         EMAILJS.publicKey,
       );
     } catch (err) {
@@ -767,22 +767,10 @@ function RSVPSection() {
   };
 
   // Étape 1 — Participation
-  const handleCanCome = async (val: Answer) => {
+  const handleCanCome = (val: Answer) => {
     setCanCome(val);
     if (val === "no") {
-      await sendEmail({
-        presence:        "❌ Ne viendra pas",
-        child_firstname: "—",
-        child_lastname:  "—",
-        allergies:       "—",
-        message:         "—",
-        parent_coming:   "—",
-        parent_firstname:"—",
-        parent_lastname: "—",
-        parent_phone:    "—",
-        parent_email:    "—",
-      });
-      setStep(5);
+      setStep(6); // → étape de recueil du prénom avant confirmation
     } else {
       setStep(2);
     }
@@ -835,6 +823,27 @@ function RSVPSection() {
       parent_firstname: parentInfo.firstName,
       parent_lastname:  parentInfo.lastName  || "—",
       parent_phone:     parentInfo.phone,
+      parent_email:     parentInfo.email     || "—",
+    });
+    setStep(5);
+  };
+
+  // Étape 6 — Infos rapides pour les absents
+  const handleAbsenceSubmit = async () => {
+    if (!childInfo.firstName.trim()) {
+      alert("Veuillez indiquer le prénom de l'enfant.");
+      return;
+    }
+    await sendEmail({
+      presence:         "❌ Ne viendra pas",
+      child_firstname:  childInfo.firstName,
+      child_lastname:   childInfo.lastName  || "—",
+      allergies:        "—",
+      message:          "—",
+      parent_coming:    "—",
+      parent_firstname: parentInfo.firstName || "—",
+      parent_lastname:  parentInfo.lastName  || "—",
+      parent_phone:     parentInfo.phone     || "—",
       parent_email:     parentInfo.email     || "—",
     });
     setStep(5);
@@ -961,6 +970,55 @@ function RSVPSection() {
             <div style={{ marginTop: 28, textAlign: "right" }}>
               <ActionButton onClick={handleFinalSubmit} disabled={sending}>
                 {sending ? "Envoi en cours…" : "Envoyer ma réponse 🎉"}
+              </ActionButton>
+            </div>
+            {sendError && <ErrorMessage message={sendError} />}
+          </FadeBox>
+        )}
+
+        {/* Étape 6 — Infos rapides (absent) */}
+        {step === 6 && (
+          <FadeBox>
+            <QuestionTitle>Dommage… Qui ne pourra pas venir ? 😢</QuestionTitle>
+            <p style={{ textAlign: "center", fontSize: 14, color: "#888", marginTop: 6, marginBottom: 20 }}>
+              Pour qu'on sache qui manquera à la fête !
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <Field label="Prénom de l'enfant *">
+                <input
+                  value={childInfo.firstName}
+                  onChange={(e) => updateChild("firstName", e.target.value)}
+                  placeholder="Prénom"
+                />
+              </Field>
+              <Field label="Nom de l'enfant">
+                <input
+                  value={childInfo.lastName}
+                  onChange={(e) => updateChild("lastName", e.target.value)}
+                  placeholder="Nom"
+                />
+              </Field>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
+              <Field label="Votre prénom (parent)">
+                <input
+                  value={parentInfo.firstName}
+                  onChange={(e) => updateParent("firstName", e.target.value)}
+                  placeholder="Prénom"
+                />
+              </Field>
+              <Field label="Votre téléphone">
+                <input
+                  value={parentInfo.phone}
+                  onChange={(e) => updateParent("phone", e.target.value)}
+                  placeholder="06 00 00 00 00"
+                  type="tel"
+                />
+              </Field>
+            </div>
+            <div style={{ marginTop: 24, textAlign: "right" }}>
+              <ActionButton onClick={handleAbsenceSubmit} disabled={sending}>
+                {sending ? "Envoi en cours…" : "Confirmer l'absence →"}
               </ActionButton>
             </div>
             {sendError && <ErrorMessage message={sendError} />}
