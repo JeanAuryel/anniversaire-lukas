@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef, ReactNode, MouseEvent } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import type { ReactNode, MouseEvent } from "react";
 import emailjs from "@emailjs/browser";
 
 // ============================================================
