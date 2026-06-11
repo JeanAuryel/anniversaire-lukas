@@ -1,4 +1,15 @@
-import { useState, useEffect, useCallback, useRef, type ReactNode, type MouseEvent } from "react";
+import { useState, useEffect, useCallback, useRef, ReactNode, MouseEvent } from "react";
+import emailjs from "@emailjs/browser";
+
+// ============================================================
+//  EMAILJS — remplacez ces 3 valeurs après configuration
+//  sur https://www.emailjs.com
+// ============================================================
+const EMAILJS = {
+  serviceId:  "service_ptel1jx",   // ⚠️ Votre Service ID
+  templateId: "template_2np0ly7",  // ⚠️ Votre Template ID
+  publicKey:  "RZL3LdjT_W6UBe08L", // ⚠️ Votre Public Key
+} as const;
 
 // ============================================================
 //  PERSONNALISATION — modifiez ces valeurs selon votre fête !
@@ -7,7 +18,7 @@ const CONFIG = {
   childName: "Lukas",      // ⚠️ Remplacez par le prénom de votre fils !
   age: 5,
   date: "Mercredi 18 juin 2026",
-  time: "14h00 – 18h00",        // Horaire à adapter
+  time: "13h30 – 16h30",        // Horaire à adapter
   locationName: "PlayJump Toulouse",
   locationAddress: "6 Rue Théron de Montaugé, 31200 Toulouse",
   locationMapsUrl:
@@ -15,7 +26,7 @@ const CONFIG = {
   locationDescription:
     "Un parc de loisirs multi-activités indoor de 1 400 m², à l'est de Toulouse (terminus Balma-Gramont). Trampolines, Ninja Warrior, mur d'escalade, plaine de jeux et bien plus — toutes les activités accessibles pour une journée 100 % fun !",
   hostName: "Akinotcho",    // ⚠️ Remplacez par votre nom de famille
-  hostPhone: "07 84 76 08 80 - 07 89 02 08 45",  // ⚠️ Votre numéro
+  hostPhone: "07 84 76 08 80",  // ⚠️ Votre numéro
   hostEmail: "familleakinotcho@gmail.com", // ⚠️ Votre email
   rsvpDeadline: "Dimanche 14 juin 2026",
 } as const;
@@ -723,9 +734,11 @@ function StepIndicator({ currentStep, canCome }: StepIndicatorProps) {
 //  Section RSVP
 // ============================================================
 function RSVPSection() {
-  const [step, setStep]               = useState<number>(1);
-  const [canCome, setCanCome]         = useState<Answer | null>(null);
+  const [step, setStep]                 = useState<number>(1);
+  const [canCome, setCanCome]           = useState<Answer | null>(null);
   const [parentComing, setParentComing] = useState<Answer | null>(null);
+  const [sending, setSending]           = useState<boolean>(false);
+  const [sendError, setSendError]       = useState<string | null>(null);
 
   const [childInfo, setChildInfo]   = useState<ChildInfo>({ firstName: "", lastName: "", allergies: "", message: "" });
   const [parentInfo, setParentInfo] = useState<ParentInfo>({ firstName: "", lastName: "", phone: "", email: "" });
@@ -733,11 +746,48 @@ function RSVPSection() {
   const updateChild  = (field: keyof ChildInfo,  val: string) => setChildInfo((prev)  => ({ ...prev, [field]: val }));
   const updateParent = (field: keyof ParentInfo, val: string) => setParentInfo((prev) => ({ ...prev, [field]: val }));
 
-  const handleCanCome = (val: Answer) => {
-    setCanCome(val);
-    setStep(val === "no" ? 5 : 2);
+  // ── Envoi de l'email via EmailJS ──
+  const sendEmail = async (templateParams: Record<string, string>) => {
+    setSending(true);
+    setSendError(null);
+    try {
+      await emailjs.send(
+        EMAILJS.serviceId,
+        EMAILJS.templateId,
+        templateParams,
+        EMAILJS.publicKey,
+      );
+    } catch (err) {
+      console.error("EmailJS error:", err);
+      setSendError("L'email n'a pas pu être envoyé. Contactez-nous directement.");
+    } finally {
+      setSending(false);
+    }
   };
 
+  // Étape 1 — Participation
+  const handleCanCome = async (val: Answer) => {
+    setCanCome(val);
+    if (val === "no") {
+      await sendEmail({
+        presence:        "❌ Ne viendra pas",
+        child_firstname: "—",
+        child_lastname:  "—",
+        allergies:       "—",
+        message:         "—",
+        parent_coming:   "—",
+        parent_firstname:"—",
+        parent_lastname: "—",
+        parent_phone:    "—",
+        parent_email:    "—",
+      });
+      setStep(5);
+    } else {
+      setStep(2);
+    }
+  };
+
+  // Étape 2 — Infos enfant
   const handleChildSubmit = () => {
     if (!childInfo.firstName.trim()) {
       alert("Veuillez indiquer le prénom de l'enfant.");
@@ -746,20 +796,49 @@ function RSVPSection() {
     setStep(3);
   };
 
-  const handleParentDecision = (val: Answer) => {
+  // Étape 3 — Accompagnateur
+  const handleParentDecision = async (val: Answer) => {
     setParentComing(val);
-    setStep(val === "yes" ? 4 : 5);
+    if (val === "no") {
+      await sendEmail({
+        presence:         "✅ Viendra",
+        child_firstname:  childInfo.firstName,
+        child_lastname:   childInfo.lastName  || "—",
+        allergies:        childInfo.allergies || "Aucune",
+        message:          childInfo.message   || "—",
+        parent_coming:    "Non — reviendra chercher l'enfant",
+        parent_firstname: "—",
+        parent_lastname:  "—",
+        parent_phone:     "—",
+        parent_email:     "—",
+      });
+      setStep(5);
+    } else {
+      setStep(4);
+    }
   };
 
-  const handleFinalSubmit = () => {
+  // Étape 4 — Infos parent
+  const handleFinalSubmit = async () => {
     if (!parentInfo.firstName.trim() || !parentInfo.phone.trim()) {
       alert("Veuillez remplir les champs obligatoires (prénom et téléphone).");
       return;
     }
+    await sendEmail({
+      presence:         "✅ Viendra",
+      child_firstname:  childInfo.firstName,
+      child_lastname:   childInfo.lastName  || "—",
+      allergies:        childInfo.allergies || "Aucune",
+      message:          childInfo.message   || "—",
+      parent_coming:    "Oui — restera avec les enfants",
+      parent_firstname: parentInfo.firstName,
+      parent_lastname:  parentInfo.lastName  || "—",
+      parent_phone:     parentInfo.phone,
+      parent_email:     parentInfo.email     || "—",
+    });
     setStep(5);
   };
 
-  // parentComing est utilisé pour afficher un message contextuel dans la confirmation
   const parentWillCome = parentComing === "yes";
 
   return (
@@ -789,9 +868,10 @@ function RSVPSection() {
               <strong style={{ color: "#6BCB77" }}>{CONFIG.childName}</strong> ?
             </QuestionTitle>
             <div style={{ display: "flex", gap: 14, marginTop: 28, justifyContent: "center", flexWrap: "wrap" }}>
-              <ChoiceButton color="#6BCB77" onClick={() => handleCanCome("yes")}>🎉 Oui, il/elle vient !</ChoiceButton>
-              <ChoiceButton color="#FF6B6B" onClick={() => handleCanCome("no")}>😢 Non, malheureusement</ChoiceButton>
+              <ChoiceButton color="#6BCB77" onClick={() => handleCanCome("yes")} disabled={sending}>🎉 Oui, il/elle vient !</ChoiceButton>
+              <ChoiceButton color="#FF6B6B" onClick={() => handleCanCome("no")}  disabled={sending}>😢 Non, malheureusement</ChoiceButton>
             </div>
+            {sending && <SendingIndicator />}
           </FadeBox>
         )}
 
@@ -847,9 +927,10 @@ function RSVPSection() {
               Les parents accompagnateurs sont les bienvenus mais règlent leur propre entrée au parc (1 € symbolique).
             </div>
             <div style={{ display: "flex", gap: 14, marginTop: 24, justifyContent: "center", flexWrap: "wrap" }}>
-              <ChoiceButton color="#FF9F45" onClick={() => handleParentDecision("yes")}>👋 Oui, je reste avec les enfants !</ChoiceButton>
-              <ChoiceButton color="#C77DFF" onClick={() => handleParentDecision("no")}>🚗 Non, je reviendrai chercher</ChoiceButton>
+              <ChoiceButton color="#FF9F45" onClick={() => handleParentDecision("yes")} disabled={sending}>👋 Oui, je reste avec les enfants !</ChoiceButton>
+              <ChoiceButton color="#C77DFF" onClick={() => handleParentDecision("no")}  disabled={sending}>🚗 Non, je reviendrai chercher</ChoiceButton>
             </div>
+            {sending && <SendingIndicator />}
           </FadeBox>
         )}
 
@@ -877,8 +958,11 @@ function RSVPSection() {
               </Field>
             </div>
             <div style={{ marginTop: 28, textAlign: "right" }}>
-              <ActionButton onClick={handleFinalSubmit}>Envoyer ma réponse 🎉</ActionButton>
+              <ActionButton onClick={handleFinalSubmit} disabled={sending}>
+                {sending ? "Envoi en cours…" : "Envoyer ma réponse 🎉"}
+              </ActionButton>
             </div>
+            {sendError && <ErrorMessage message={sendError} />}
           </FadeBox>
         )}
 
@@ -972,10 +1056,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-interface ButtonProps { color: string; onClick: () => void; children: ReactNode; }
+interface ButtonProps { color: string; onClick: () => void; children: ReactNode; disabled?: boolean; }
 
-function ChoiceButton({ color, onClick, children }: ButtonProps) {
+function ChoiceButton({ color, onClick, children, disabled = false }: ButtonProps) {
   const handleEnter = (e: MouseEvent<HTMLButtonElement>) => {
+    if (disabled) return;
     e.currentTarget.style.transform = "scale(1.05)";
     e.currentTarget.style.boxShadow = `0 6px 22px ${color}88`;
   };
@@ -989,18 +1074,20 @@ function ChoiceButton({ color, onClick, children }: ButtonProps) {
       onClick={onClick}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
+      disabled={disabled}
       style={{
         padding: "14px 22px",
-        background: color,
+        background: disabled ? "#CCC" : color,
         color: "#fff",
         border: "none",
         borderRadius: 18,
         fontFamily: "'Nunito', sans-serif",
         fontWeight: 800,
         fontSize: 15,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         transition: "transform 0.15s, box-shadow 0.15s",
-        boxShadow: `0 4px 16px ${color}55`,
+        boxShadow: disabled ? "none" : `0 4px 16px ${color}55`,
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       {children}
@@ -1008,8 +1095,8 @@ function ChoiceButton({ color, onClick, children }: ButtonProps) {
   );
 }
 
-function ActionButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  const handleEnter = (e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.transform = "scale(1.04)"; };
+function ActionButton({ onClick, children, disabled = false }: { onClick: () => void; children: ReactNode; disabled?: boolean }) {
+  const handleEnter = (e: MouseEvent<HTMLButtonElement>) => { if (!disabled) e.currentTarget.style.transform = "scale(1.04)"; };
   const handleLeave = (e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.transform = "scale(1)"; };
 
   return (
@@ -1017,22 +1104,40 @@ function ActionButton({ onClick, children }: { onClick: () => void; children: Re
       onClick={onClick}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
+      disabled={disabled}
       style={{
         padding: "14px 28px",
-        background: "linear-gradient(135deg, #6BCB77, #4CAF50)",
+        background: disabled ? "#AAA" : "linear-gradient(135deg, #6BCB77, #4CAF50)",
         color: "#fff",
         border: "none",
         borderRadius: 16,
         fontFamily: "'Nunito', sans-serif",
         fontWeight: 800,
         fontSize: 16,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         transition: "transform 0.15s, box-shadow 0.15s",
-        boxShadow: "0 4px 18px rgba(107,203,119,0.4)",
+        boxShadow: disabled ? "none" : "0 4px 18px rgba(107,203,119,0.4)",
+        opacity: disabled ? 0.7 : 1,
       }}
     >
       {children}
     </button>
+  );
+}
+
+function SendingIndicator() {
+  return (
+    <p style={{ textAlign: "center", marginTop: 16, fontSize: 14, color: "#FF9F45", fontWeight: 700 }}>
+      ⏳ Envoi de la confirmation en cours…
+    </p>
+  );
+}
+
+function ErrorMessage({ message }: { message: string }) {
+  return (
+    <p style={{ textAlign: "center", marginTop: 12, fontSize: 14, color: "#FF6B6B", fontWeight: 700 }}>
+      ⚠️ {message}
+    </p>
   );
 }
 
